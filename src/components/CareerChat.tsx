@@ -5,9 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { ArrowLeft, Send, Bot, User, Briefcase, BookOpen, TrendingUp, MapPin, Settings } from "lucide-react";
+import { ArrowLeft, Send, Bot, User, Briefcase, BookOpen, TrendingUp, MapPin } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 interface StudentData {
   name: string;
@@ -64,20 +64,8 @@ const CareerChat = ({ studentData, onBack }: CareerChatProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  const [apiKey, setApiKey] = useState("");
-  const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
-
-  // Load API key from localStorage on component mount
-  useEffect(() => {
-    const savedApiKey = localStorage.getItem('gemini_api_key');
-    if (savedApiKey) {
-      setApiKey(savedApiKey);
-    } else {
-      setShowApiKeyDialog(true);
-    }
-  }, []);
 
   // Generate initial AI response based on student data
   useEffect(() => {
@@ -177,15 +165,6 @@ Based on your profile, I've identified some excellent career paths for you. Let 
 
   const handleSendMessage = () => {
     if (!input.trim()) return;
-    if (!apiKey) {
-      toast({
-        title: "API Key Required",
-        description: "Please set your Gemini API key first.",
-        variant: "destructive",
-      });
-      setShowApiKeyDialog(true);
-      return;
-    }
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -226,58 +205,34 @@ Based on your profile, I've identified some excellent career paths for you. Let 
   };
 
   const generateAIResponse = async (userInput: string): Promise<string> => {
-    if (!apiKey) {
-      return "Please set your Gemini API key first to get AI-powered career guidance.";
-    }
-
     try {
-      const prompt = `You are an AI Career Guidance Counselor. Based on the following student profile, provide personalized career advice for their question.
-
-Student Profile:
-- Name: ${studentData.name}
-- Education: ${studentData.education}
-- Interests: ${studentData.interests.join(", ")}
-- Skills: ${studentData.skills.join(", ")}
-- Career Goals: ${studentData.careerGoals}
-
-Student Question: ${userInput}
-
-Please provide a helpful, encouraging, and specific response that addresses their question while considering their profile. Keep the response conversational and actionable.`;
-
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: prompt
-            }]
-          }],
-          generationConfig: {
-            temperature: 0.7,
-            topK: 40,
-            topP: 0.95,
-            maxOutputTokens: 1024,
+      const { data, error } = await supabase.functions.invoke('career-guidance', {
+        body: {
+          prompt: userInput,
+          studentData: {
+            name: studentData.name,
+            education: studentData.education,
+            interests: studentData.interests,
+            skills: studentData.skills,
+            careerGoals: studentData.careerGoals
           }
-        }),
+        }
       });
 
-      if (!response.ok) {
-        throw new Error(`API request failed: ${response.status}`);
+      if (error) {
+        console.error('Error calling career-guidance function:', error);
+        throw error;
       }
 
-      const data = await response.json();
-      return data.candidates[0]?.content?.parts[0]?.text || "I apologize, but I couldn't generate a response at this time. Please try again.";
+      return data.generatedText || "I apologize, but I couldn't generate a response at this time. Please try again.";
     } catch (error) {
-      console.error('Error calling Gemini API:', error);
+      console.error('Error generating AI response:', error);
       toast({
-        title: "API Error",
-        description: "Failed to get AI response. Please check your API key and try again.",
+        title: "Error",
+        description: "Failed to get AI response. Please try again.",
         variant: "destructive",
       });
-      return "I'm experiencing technical difficulties. Please check your API key and try again.";
+      return "I'm experiencing technical difficulties. Please try again.";
     }
   };
 
@@ -367,71 +322,14 @@ Please provide a helpful, encouraging, and specific response that addresses thei
     <div className="min-h-screen bg-gradient-secondary">
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" onClick={onBack} className="p-2">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <div>
-              <h1 className="text-2xl font-bold">Career Guidance Chat</h1>
-              <p className="text-muted-foreground">Ask me anything about your career path, {studentData.name}!</p>
-            </div>
+        <div className="flex items-center gap-4 mb-6">
+          <Button variant="ghost" onClick={onBack} className="p-2">
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold">Career Guidance Chat</h1>
+            <p className="text-muted-foreground">Ask me anything about your career path, {studentData.name}!</p>
           </div>
-          
-          <Dialog open={showApiKeyDialog} onOpenChange={setShowApiKeyDialog}>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Settings className="h-4 w-4 mr-2" />
-                API Settings
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Gemini API Key</DialogTitle>
-                <DialogDescription>
-                  Enter your Gemini API key to enable AI-powered career guidance. Your key will be stored locally in your browser.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <Input
-                  type="password"
-                  placeholder="Enter your Gemini API key..."
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                />
-                <div className="flex gap-2">
-                  <Button
-                    onClick={() => {
-                      if (apiKey.trim()) {
-                        localStorage.setItem('gemini_api_key', apiKey.trim());
-                        setShowApiKeyDialog(false);
-                        toast({
-                          title: "API Key Saved",
-                          description: "Your Gemini API key has been saved successfully.",
-                        });
-                      }
-                    }}
-                    className="flex-1"
-                  >
-                    Save API Key
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      localStorage.removeItem('gemini_api_key');
-                      setApiKey('');
-                      toast({
-                        title: "API Key Removed",
-                        description: "Your API key has been removed from local storage.",
-                      });
-                    }}
-                  >
-                    Clear
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
         </div>
 
         {/* Chat Interface */}
