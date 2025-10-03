@@ -38,7 +38,26 @@ Student Profile:
 
 Student Question: ${prompt}
 
-Please provide a helpful, encouraging, and specific response that addresses their question while considering their profile. Keep the response conversational and actionable.`;
+IMPORTANT: Format your response in this specific style:
+
+1. Start with a friendly opening line (short, motivational, with emoji). Address them by name.
+
+2. Break down insights into clear sections with emoji headers like:
+   🔎 Role Insights
+   📍 Location Factor
+   🏢 Company Type
+   📈 Experience Level
+   💼 Skills Needed
+   🎯 Career Paths
+   📚 Learning Resources
+
+3. Use bullet points or short lines (max 5-6 lines per section)
+
+4. Highlight key terms with bold using **term** or add relevant emojis for quick scanning
+
+5. End with a short, actionable step they can take next
+
+Keep it encouraging, clear, and visually clean. Think like a helpful career coach, not a formal advisor.`;
 
     console.log('Calling Gemini API with prompt length:', fullPrompt.length);
 
